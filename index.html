@@ -53,84 +53,75 @@
   </div>
 
 <script>
-/* ===== 모드 선택 =====
- * API_KEY 비워두면: 유튜브 기본 임베드(간단/안정)
- * API_KEY 넣으면: IFrame API + 무작위(셔플) 재생 모드
- */
-const API_KEY = ""; // 예: "AIzaSy..." (없으면 빈 문자열 유지)
-
-/* 쿼리에서 list 추출 */
+/* ?list=플레이리스트ID 로 동작 */
 const params = new URLSearchParams(location.search);
 const LIST_ID = params.get("list");
+
+const apiDiv = document.getElementById("apiPlayer");
+const frameDiv = document.getElementById("frame");
+const ctrl = document.getElementById("ctrl");
 
 if (!LIST_ID) {
   document.querySelector(".hint").innerHTML += "<br><b>list 파라미터가 없습니다.</b>";
 } else {
-  if (!API_KEY) {
-    /* ── 기본 임베드 모드(키 불필요) ───────────────────────── */
-    const container = document.getElementById("frame");
-    container.hidden = false;
-    const src =
-      `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(LIST_ID)}` +
-      `&autoplay=1&loop=1&modestbranding=1&rel=0&playsinline=1&controls=0`;
-    container.innerHTML =
-      `<iframe src="${src}" allow="autoplay; encrypted-media" referrerpolicy="origin-when-cross-origin"></iframe>`;
-  } else {
-    /* ── 셔플 모드(API 키 필요) ─────────────────────────────── */
-    const apiDiv = document.getElementById("apiPlayer");
-    apiDiv.hidden = false;
-    const ctrl = document.getElementById("ctrl");
-    ctrl.hidden = false;
+  // IFrame API 사용 → 플레이리스트 로드 → getPlaylist()로 셔플
+  apiDiv.hidden = false;
+  ctrl.hidden = false;
 
-    let player, videoIds = [];
+  let player, ids = [];
 
-    window.onYouTubeIframeAPIReady = function() {
-      player = new YT.Player('apiPlayer', {
-        height: '100%', width: '100%',
-        playerVars: { controls:0, modestbranding:1, rel:0, iv_load_policy:3, playsinline:1 },
-        events: { onReady:onReady, onStateChange:onState }
-      });
+  window.onYouTubeIframeAPIReady = function () {
+    player = new YT.Player("apiPlayer", {
+      height: "100%",
+      width: "100%",
+      playerVars: {
+        listType: "playlist",
+        list: LIST_ID,
+        controls: 0,
+        modestbranding: 1,
+        rel: 0,
+        iv_load_policy: 3,
+        playsinline: 1
+      },
+      events: { onReady, onStateChange }
+    });
+  };
+
+  function onReady() {
+    // 플레이리스트가 로드되면 YouTube가 내부적으로 큐를 채움
+    // 잠시 대기 후 getPlaylist()로 영상 ID 배열 확보
+    const tryGrab = () => {
+      ids = player.getPlaylist() || [];
+      if (ids.length) {
+        playRandom();
+      } else {
+        setTimeout(tryGrab, 200);
+      }
     };
-
-    function onReady() {
-      fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=contentDetails&maxResults=50&playlistId=${encodeURIComponent(LIST_ID)}&key=${API_KEY}`)
-        .then(r=>r.json())
-        .then(d=>{
-          videoIds = (d.items||[]).map(i=>i.contentDetails.videoId).filter(Boolean);
-          playRandom();
-        })
-        .catch(()=>fallbackToEmbed());
-    }
-
-    function playRandom(){
-      if(!videoIds.length) return fallbackToEmbed();
-      const i = Math.floor(Math.random()*videoIds.length);
-      player.loadVideoById(videoIds[i]);
-    }
-
-    function onState(e){ if(e.data===0) playRandom(); } // 0: ENDED → 다음 랜덤
-
-    document.getElementById("pp").onclick = ()=>{
-      const s = player.getPlayerState();
-      (s===1) ? player.pauseVideo() : player.playVideo();
-    };
-    document.getElementById("nx").onclick = playRandom;
-
-    function fallbackToEmbed(){
-      apiDiv.hidden = true; ctrl.hidden = true;
-      const container = document.getElementById("frame");
-      container.hidden = false;
-      const src =
-        `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(LIST_ID)}` +
-        `&autoplay=1&loop=1&modestbranding=1&rel=0&playsinline=1&controls=0`;
-      container.innerHTML = `<iframe src="${src}" allow="autoplay; encrypted-media"></iframe>`;
-    }
-
-    const s = document.createElement('script');
-    s.src = "https://www.youtube.com/iframe_api";
-    document.body.appendChild(s);
+    tryGrab();
   }
+
+  function playRandom() {
+    if (!ids.length) return;
+    const i = Math.floor(Math.random() * ids.length);
+    player.playVideoAt(i);
+  }
+
+  function onStateChange(e) {
+    // 0 = ENDED → 다음 랜덤
+    if (e.data === 0) playRandom();
+  }
+
+  document.getElementById("pp").onclick = () => {
+    const s = player.getPlayerState();
+    (s === 1) ? player.pauseVideo() : player.playVideo();
+  };
+  document.getElementById("nx").onclick = playRandom;
+
+  // IFrame API 주입
+  const s = document.createElement("script");
+  s.src = "https://www.youtube.com/iframe_api";
+  document.body.appendChild(s);
 }
 </script>
-</body>
-</html>
+
