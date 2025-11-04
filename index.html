@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>One-Page YouTube Playlist Player (Light)</title>
+<style>
+  /* ── Light, clean, responsive ───────────────────────────── */
+  :root {
+    --w: 360px; --h: 202.5px;              /* 16:9 기본 */
+    --bg:#f7f8fa; --fg:#111;               /* 배경/글자 */
+    --card:#fff; --line:#e6e9ef;           /* 카드/테두리 */
+    --accent:#a9bfd6; --accent2:#9cbbab;   /* 포커스 컬러(너 선호) */
+  }
+  @media (min-width:768px){ :root{ --w:560px; --h:315px; } }
+  @media (min-width:1024px){ :root{ --w:720px; --h:405px; } }
+
+  *{ box-sizing:border-box }
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:system-ui, Arial, sans-serif;
+    display:flex; min-height:100vh; align-items:center; justify-content:center;
+  }
+  .wrap{ width:var(--w); display:flex; flex-direction:column; align-items:center; gap:10px }
+
+  #frame, #apiPlayer{ width:100%; height:var(--h) }
+  #frame iframe, #apiPlayer{
+    width:100%; height:100%; border:1px solid var(--line);
+    background:var(--card); border-radius:14px;
+    box-shadow:0 6px 16px rgba(17,17,17,.06);
+  }
+
+  .controls{ display:flex; gap:8px }
+  button{
+    background:#fff; color:#223; border:1px solid var(--line);
+    padding:8px 12px; border-radius:10px; font-weight:600; cursor:pointer;
+  }
+  button:hover{ border-color:var(--accent); box-shadow:0 2px 8px rgba(0,0,0,.06) }
+
+  .hint{ opacity:.7; font-size:12px; text-align:center; max-width:90vw }
+</style>
+<body>
+  <div class="wrap">
+    <div id="frame" hidden></div>
+    <div id="apiPlayer" hidden></div>
+    <div class="controls" id="ctrl" hidden>
+      <button id="pp">▶/⏸</button>
+      <button id="nx">Next</button>
+    </div>
+    <div class="hint">
+      이 페이지는 <code>?list=플레이리스트ID</code>로 동작합니다.
+      예) <code>https://your-app.vercel.app/?list=PLxxxxxxxx</code>
+    </div>
+  </div>
+
+<script>
+/* ===== 모드 선택 =====
+ * API_KEY 비워두면: 유튜브 기본 임베드(간단/안정)
+ * API_KEY 넣으면: IFrame API + 무작위(셔플) 재생 모드
+ */
+const API_KEY = ""; // 예: "AIzaSy..." (없으면 빈 문자열 유지)
+
+/* 쿼리에서 list 추출 */
+const params = new URLSearchParams(location.search);
+const LIST_ID = params.get("list");
+
+if (!LIST_ID) {
+  document.querySelector(".hint").innerHTML += "<br><b>list 파라미터가 없습니다.</b>";
+} else {
+  if (!API_KEY) {
+    /* ── 기본 임베드 모드(키 불필요) ───────────────────────── */
+    const container = document.getElementById("frame");
+    container.hidden = false;
+    const src =
+      `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(LIST_ID)}` +
+      `&autoplay=1&loop=1&modestbranding=1&rel=0&playsinline=1&controls=0`;
+    container.innerHTML =
+      `<iframe src="${src}" allow="autoplay; encrypted-media" referrerpolicy="origin-when-cross-origin"></iframe>`;
+  } else {
+    /* ── 셔플 모드(API 키 필요) ─────────────────────────────── */
+    const apiDiv = document.getElementById("apiPlayer");
+    apiDiv.hidden = false;
+    const ctrl = document.getElementById("ctrl");
+    ctrl.hidden = false;
+
+    let player, videoIds = [];
+
+    window.onYouTubeIframeAPIReady = function() {
+      player = new YT.Player('apiPlayer', {
+        height: '100%', width: '100%',
+        playerVars: { controls:0, modestbranding:1, rel:0, iv_load_policy:3, playsinline:1 },
+        events: { onReady:onReady, onStateChange:onState }
+      });
+    };
+
+    function onReady() {
+      fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=contentDetails&maxResults=50&playlistId=${encodeURIComponent(LIST_ID)}&key=${API_KEY}`)
+        .then(r=>r.json())
+        .then(d=>{
+          videoIds = (d.items||[]).map(i=>i.contentDetails.videoId).filter(Boolean);
+          playRandom();
+        })
+        .catch(()=>fallbackToEmbed());
+    }
+
+    function playRandom(){
+      if(!videoIds.length) return fallbackToEmbed();
+      const i = Math.floor(Math.random()*videoIds.length);
+      player.loadVideoById(videoIds[i]);
+    }
+
+    function onState(e){ if(e.data===0) playRandom(); } // 0: ENDED → 다음 랜덤
+
+    document.getElementById("pp").onclick = ()=>{
+      const s = player.getPlayerState();
+      (s===1) ? player.pauseVideo() : player.playVideo();
+    };
+    document.getElementById("nx").onclick = playRandom;
+
+    function fallbackToEmbed(){
+      apiDiv.hidden = true; ctrl.hidden = true;
+      const container = document.getElementById("frame");
+      container.hidden = false;
+      const src =
+        `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(LIST_ID)}` +
+        `&autoplay=1&loop=1&modestbranding=1&rel=0&playsinline=1&controls=0`;
+      container.innerHTML = `<iframe src="${src}" allow="autoplay; encrypted-media"></iframe>`;
+    }
+
+    const s = document.createElement('script');
+    s.src = "https://www.youtube.com/iframe_api";
+    document.body.appendChild(s);
+  }
+}
+</script>
+</body>
+</html>
