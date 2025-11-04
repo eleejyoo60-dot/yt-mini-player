@@ -2,14 +2,13 @@
 <html lang="ko">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>One-Page YouTube Playlist Player (Light)</title>
+<title>Light YouTube Playlist Player</title>
 <style>
-  /* ── Light, clean, responsive ───────────────────────────── */
   :root {
-    --w: 360px; --h: 202.5px;              /* 16:9 기본 */
+    --w: 150px; --h: 802.5px;              /* 16:9 기본 */
     --bg:#f7f8fa; --fg:#111;               /* 배경/글자 */
     --card:#fff; --line:#e6e9ef;           /* 카드/테두리 */
-    --accent:#a9bfd6; --accent2:#9cbbab;   /* 포커스 컬러(너 선호) */
+    --accent:#a9bfd6; --accent2:#9cbbab;   /* 포커스 컬러 */
   }
   @media (min-width:768px){ :root{ --w:560px; --h:315px; } }
   @media (min-width:1024px){ :root{ --w:720px; --h:405px; } }
@@ -22,106 +21,41 @@
   }
   .wrap{ width:var(--w); display:flex; flex-direction:column; align-items:center; gap:10px }
 
-  #frame, #apiPlayer{ width:100%; height:var(--h) }
-  #frame iframe, #apiPlayer{
+  #frame{ width:100%; height:var(--h) }
+  #frame iframe{
     width:100%; height:100%; border:1px solid var(--line);
     background:var(--card); border-radius:14px;
     box-shadow:0 6px 16px rgba(17,17,17,.06);
   }
 
-  .controls{ display:flex; gap:8px }
-  button{
-    background:#fff; color:#223; border:1px solid var(--line);
-    padding:8px 12px; border-radius:10px; font-weight:600; cursor:pointer;
-  }
-  button:hover{ border-color:var(--accent); box-shadow:0 2px 8px rgba(0,0,0,.06) }
-
-  .hint{ opacity:.7; font-size:12px; text-align:center; max-width:90vw }
+  .hint{ opacity:.65; font-size:12px; text-align:center; max-width:90vw }
 </style>
 <body>
   <div class="wrap">
-    <div id="frame" hidden></div>
-    <div id="apiPlayer" hidden></div>
-    <div class="controls" id="ctrl" hidden>
-      <button id="pp">▶/⏸</button>
-      <button id="nx">Next</button>
-    </div>
+    <div id="frame"></div>
     <div class="hint">
-      이 페이지는 <code>?list=플레이리스트ID</code>로 동작합니다.
+      이 페이지는 <code>?list=플레이리스트ID</code>로 동작합니다.<br>
       예) <code>https://your-app.vercel.app/?list=PLxxxxxxxx</code>
     </div>
   </div>
 
 <script>
-/* ?list=플레이리스트ID 로 동작 */
 const params = new URLSearchParams(location.search);
 const LIST_ID = params.get("list");
 
-const apiDiv = document.getElementById("apiPlayer");
 const frameDiv = document.getElementById("frame");
-const ctrl = document.getElementById("ctrl");
 
 if (!LIST_ID) {
-  document.querySelector(".hint").innerHTML += "<br><b>list 파라미터가 없습니다.</b>";
+  frameDiv.innerHTML = "<div style='padding:20px'>list 파라미터가 없습니다.</div>";
 } else {
-  // IFrame API 사용 → 플레이리스트 로드 → getPlaylist()로 셔플
-  apiDiv.hidden = false;
-  ctrl.hidden = false;
+  // **Notion 호환용: 순차 재생, 컨트롤 숨김 가능**
+  const src =
+    `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(LIST_ID)}` +
+    `&autoplay=1&loop=1&modestbranding=1&rel=0&playsinline=1&controls=1`;
 
-  let player, ids = [];
-
-  window.onYouTubeIframeAPIReady = function () {
-    player = new YT.Player("apiPlayer", {
-      height: "100%",
-      width: "100%",
-      playerVars: {
-        listType: "playlist",
-        list: LIST_ID,
-        controls: 0,
-        modestbranding: 1,
-        rel: 0,
-        iv_load_policy: 3,
-        playsinline: 1
-      },
-      events: { onReady, onStateChange }
-    });
-  };
-
-  function onReady() {
-    // 플레이리스트가 로드되면 YouTube가 내부적으로 큐를 채움
-    // 잠시 대기 후 getPlaylist()로 영상 ID 배열 확보
-    const tryGrab = () => {
-      ids = player.getPlaylist() || [];
-      if (ids.length) {
-        playRandom();
-      } else {
-        setTimeout(tryGrab, 200);
-      }
-    };
-    tryGrab();
-  }
-
-  function playRandom() {
-    if (!ids.length) return;
-    const i = Math.floor(Math.random() * ids.length);
-    player.playVideoAt(i);
-  }
-
-  function onStateChange(e) {
-    // 0 = ENDED → 다음 랜덤
-    if (e.data === 0) playRandom();
-  }
-
-  document.getElementById("pp").onclick = () => {
-    const s = player.getPlayerState();
-    (s === 1) ? player.pauseVideo() : player.playVideo();
-  };
-  document.getElementById("nx").onclick = playRandom;
-
-  // IFrame API 주입
-  const s = document.createElement("script");
-  s.src = "https://www.youtube.com/iframe_api";
-  document.body.appendChild(s);
+  frameDiv.innerHTML =
+    `<iframe src="${src}" allow="autoplay; encrypted-media" referrerpolicy="origin-when-cross-origin"></iframe>`;
 }
 </script>
-
+</body>
+</html>
